@@ -24,13 +24,14 @@ mkdir -p %{buildroot}/opt/glite/yaim/functions/utils
 mkdir -p %{buildroot}/opt/glite/yaim/node-info.d
 mkdir -p %{buildroot}/opt/glite/yaim/defaults
 mkdir -p %{buildroot}/opt/glite/yaim/examples/siteinfo/services
+mkdir -p %{buildroot}/opt/glite/yaim/etc/versions
 	
 cp %{_builddir}/%{name}-%{version}/config/functions/config* %{buildroot}/opt/glite/yaim/functions
 cp %{_builddir}/%{name}-%{version}/config/functions/utils/*_* %{buildroot}/opt/glite/yaim/functions/utils
 cp %{_builddir}/%{name}-%{version}/config/node-info.d/glite-* %{buildroot}/opt/glite/yaim/node-info.d
 cp %{_builddir}/%{name}-%{version}/config/defaults/glite-* %{buildroot}/opt/glite/yaim/defaults
 cp %{_builddir}/%{name}-%{version}/config/services/glite-* %{buildroot}/opt/glite/yaim/examples/siteinfo/services
-
+echo "@PKGNAME@ @PKGVERSION@-@PKGRELEASE@" > %{buildroot}/opt/glite/yaim/etc/versions/@PKGNAME@
 
 %clean
 rm -rf %{buildroot}
@@ -41,6 +42,7 @@ rm -rf %{buildroot}
 %defattr(-,root,root)
 /opt/glite/yaim/defaults/glite-cluster.post
 /opt/glite/yaim/defaults/glite-cluster.pre
+/opt/glite/yaim/etc/versions/@PKGNAME@
 /opt/glite/yaim/examples/siteinfo/services/glite-cluster
 /opt/glite/yaim/functions/config_*
 /opt/glite/yaim/functions/utils/backup_cluster_file
