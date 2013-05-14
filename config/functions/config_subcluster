@@ -1,0 +1,128 @@
+#!/bin/bash
+##############################################################################
+# Copyright (c) Members of the EGEE Collaboration. 2004.
+# See http://www.eu-egee.org/partners/ for details on the copyright
+# holders.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS
+# OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+##############################################################################
+#
+# NAME :        config_subcluster
+#
+# DESCRIPTION : This function configures the subclusters.
+#
+# MAINTAINER :     yaim-contact@cern.ch massimo.sgaravatto@pd.infn.it
+#
+# NOTES :
+#
+# YAIM MODULE:  glite-yaim-cluster
+#
+##############################################################################
+
+
+config_subcluster_check () {
+
+ret=0
+
+for CLUSTER in ${CLUSTERS}; do
+  newSUBCLUSTERS=""
+  for SUBCLUSTER in `eval echo "\\$CLUSTER_${CLUSTER}_SUBCLUSTERS"`; do
+    SUBCLUSTER=`echo ${SUBCLUSTER} | sed -e 's/-/_/g' -e 's/\./_/g' | tr '[:lower:]' '[:upper:]'`
+    newSUBCLUSTERS="${newSUBCLUSTERS} $SUBCLUSTER"
+    UniqueID=`eval echo "\\$SUBCLUSTER_${SUBCLUSTER}_SUBCLUSTER_UniqueID" | tr '[:upper:]' '[:lower:]'`
+    if [ "x`echo ${UniqueID} | sed -e 's/[a-z0-9._-]//g'`" != "x" ]; then
+      yaimlog ERROR "The UniqueID provided for subcluster $SUBCLUSTER contains invalid character(s)"
+      let "ret |= 1"
+    fi
+    eval "SUBCLUSTER_${SUBCLUSTER}_SUBCLUSTER_UniqueID=\"${UniqueID}\""
+  done
+  eval "CLUSTER_${CLUSTER}_SUBCLUSTERS=\"${newSUBCLUSTERS}\""
+done
+
+requires $1 CLUSTERS CLUSTER__SUBCLUSTERS GlueCluster_ldif
+let "ret |= $?"
+
+for i in ${HOST_VAR}; do
+  requires $1 SUBCLUSTER__HOST_$i
+  let "ret |= $?"
+done
+
+for i in ${SUBCLUSTER_VAR}; do
+  requires $1 SUBCLUSTER__SUBCLUSTER_$i
+  let "ret |= $?"
+done
+
+return $ret
+}
+
+config_subcluster_setenv () {
+
+  yaimlog DEBUG "This function currently doesn't set any environment variables"
+
+}
+
+config_subcluster () {
+
+OUTFILE=${GlueCluster_ldif} 
+
+for CLUSTER in ${CLUSTERS}; do
+
+  for SUBCLUSTER in `eval echo "\\$CLUSTER_${CLUSTER}_SUBCLUSTERS"`; do
+
+    yaimlog DEBUG "Configuring subcluster ${SUBCLUSTER}"
+    echo "" >>  ${OUTFILE}
+    echo "dn: GlueSubClusterUniqueID=`eval echo "\\$SUBCLUSTER_${SUBCLUSTER}_SUBCLUSTER_UniqueID"`,GlueClusterUniqueID=`eval echo "\\$CLUSTER_${CLUSTER}_CLUSTER_UniqueID"`,mds-vo-name=resource,o=grid" >> ${OUTFILE}
+ cat << EOF >> ${OUTFILE}
+objectClass: GlueClusterTop
+objectClass: GlueSubCluster
+objectClass: GlueHostApplicationSoftware
+objectClass: GlueHostArchitecture
+objectClass: GlueHostBenchmark
+objectClass: GlueHostMainMemory
+objectClass: GlueHostNetworkAdapter
+objectClass: GlueHostOperatingSystem
+objectClass: GlueHostProcessor
+objectClass: GlueInformationService
+objectClass: GlueKey
+objectClass: GlueSchemaVersion
+GlueSchemaVersionMajor: 1
+GlueSchemaVersionMinor: 3
+EOF
+    echo "GlueSubClusterUniqueID: `eval echo "\\$SUBCLUSTER_${SUBCLUSTER}_SUBCLUSTER_UniqueID"`" >> ${OUTFILE}
+    echo "GlueChunkKey: GlueClusterUniqueID=`eval echo "\\$CLUSTER_${CLUSTER}_CLUSTER_UniqueID"`" >> ${OUTFILE}
+    for i in ${HOST_VAR}; do
+      if [ $i == "ApplicationSoftwareRunTimeEnvironment" ]; then
+        APP_LIST=`eval echo "\\$SUBCLUSTER_${SUBCLUSTER}_HOST_ApplicationSoftwareRunTimeEnvironment"`
+        TMPVAR=`echo ${APP_LIST}`
+        for item in ${TMPVAR}; do
+          echo "GlueHostApplicationSoftwareRunTimeEnvironment: $item" >> ${OUTFILE}
+        done
+      else
+        echo "GlueHost$i: `eval echo "\\$SUBCLUSTER_${SUBCLUSTER}_HOST_$i"`" >> ${OUTFILE}
+      fi
+    done
+    for i in ${SUBCLUSTER_VAR}; do
+      if [ $i != "UniqueID" ]; then
+        echo "GlueSubCluster$i: `eval echo "\\$SUBCLUSTER_${SUBCLUSTER}_SUBCLUSTER_$i"`" >> ${OUTFILE}
+      fi
+    done
+    echo "GlueInformationServiceURL: ldap://`hostname -f`:${info_port}/mds-vo-name=${info_type},o=grid" >> ${OUTFILE}
+
+  done # subcluster
+
+done #cluster
+
+return 0
+
+}

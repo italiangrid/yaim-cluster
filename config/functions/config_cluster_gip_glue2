@@ -1,0 +1,559 @@
+#!/bin/bash
+##############################################################################
+# Copyright (c) Members of the EGEE Collaboration. 2004.
+# See http://www.eu-egee.org/partners/ for details on the copyright
+# holders.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+##############################################################################
+#
+# NAME :        config_cluster_gip_glue2
+#
+# DESCRIPTION : This function configures the generic information provider (GIP)
+#               for glite-CLUSTER for glue2
+#
+# AUTHORS :     massimo.sgaravatto@pd.infn.it
+#
+# YAIM MODULE:  glite.yaim.cluster
+#
+##############################################################################
+function config_cluster_gip_glue2_check () {
+
+ ret=0
+
+
+for CLUSTER in ${CLUSTERS}; do
+  newSUBCLUSTERS=""
+  for SUBCLUSTER in `eval echo "\\$CLUSTER_${CLUSTER}_SUBCLUSTERS"`; do
+    SUBCLUSTER=`echo ${SUBCLUSTER} | sed -e 's/-/_/g' -e 's/\./_/g' | tr '[:lower:]' '[:upper:]'`
+    newSUBCLUSTERS="${newSUBCLUSTERS} $SUBCLUSTER"
+    UniqueID=`eval echo "\\$SUBCLUSTER_${SUBCLUSTER}_SUBCLUSTER_UniqueID" | tr '[:upper:]' '[:lower:]'`
+    if [ "x`echo ${UniqueID} | sed -e 's/[a-z0-9._-]//g'`" != "x" ]; then
+      yaimlog ERROR "The UniqueID provided for subcluster $SUBCLUSTER contains invalid character(s)"
+      let "ret |= 1"
+    fi
+    eval "SUBCLUSTER_${SUBCLUSTER}_SUBCLUSTER_UniqueID=\"${UniqueID}\""
+ done
+ eval "CLUSTER_${CLUSTER}_SUBCLUSTERS=\"${newSUBCLUSTERS}\""
+done
+
+ requires $1 SITE_NAME COMPUTING_SERVICE_ID USE_CEMON \
+        CLUSTERS CLUSTER__SUBCLUSTERS CE_BATCH_SYS BATCH_VERSION SUBCLUSTER__HOST_ArchitecturePlatformType \
+        SUBCLUSTER__SUBCLUSTER_PhysicalCPUs SUBCLUSTER__SUBCLUSTER_LogicalCPUs SUBCLUSTER__HOST_ArchitectureSMPSize \
+        SUBCLUSTER__HOST_ProcessorVendor SUBCLUSTER__HOST_ProcessorModel SUBCLUSTER__HOST_ProcessorClockSpeed \
+        SUBCLUSTER__HOST_MainMemoryRAMSize SUBCLUSTER__HOST_MainMemoryVirtualSize CE_OS_FAMILY SUBCLUSTER__HOST_OperatingSystemName \
+        SUBCLUSTER__HOST_OperatingSystemRelease SUBCLUSTER__HOST_NetworkAdapterInboundIP \
+        SUBCLUSTER__HOST_NetworkAdapterOutboundIP SUBCLUSTER__HOST_BenchmarkSF00 SUBCLUSTER__HOST_BenchmarkSI00 \
+        SUBCLUSTER__HOST_ProcessorOtherDescription QUEUES
+
+ let "ret |= $?"
+
+ for i in ${SUBCLUSTER_VAR}; do
+  requires $1 SUBCLUSTER__SUBCLUSTER_$i
+  let "ret |= $?"
+done
+ 
+return $ret
+}
+
+function config_cluster_gip_glue2_setenv () {
+
+  yaimlog DEBUG "This function currently doesn't set any environment variables."
+
+}
+
+function convert_list () {
+
+    RETVAL="( "
+    tmpsep=""
+    for item in $*; do
+        RETVAL="${RETVAL}${tmpsep}${item}"
+        tmpsep=" , "
+    done
+    RETVAL="${RETVAL} )"
+    
+}
+
+function config_cluster_gip_glue2 () {
+
+
+GLITE_CLUSTER_LOCATION_LIBEXEC=/usr/libexec
+GLITE_CLUSTER_LOCATION_ETC=/etc
+GLITE_CLUSTER_LOCATION_GIP=/var/lib/bdii/gip
+GLITE_CLUSTER_GLUE2_CONF=${GLITE_CLUSTER_LOCATION_ETC}/glite-ce-glue2/glite-cluster-glue2.conf
+GLITE_CLUSTER_SHARE_CONF=${GLITE_CLUSTER_LOCATION_ETC}/glite-ce-glue2/glite-cluster-glue2-shares.conf
+
+# Check if the CE provides the ES interface
+# this triggers the publication of new Endpoints
+if [ "x$USE_EMIES" == "xtrue" ]; then
+  UseEMIES="yes"
+else
+  UseEMIES="no"
+fi
+
+
+
+# ServiceId is yaim variable COMPUTING_SERVICE_ID (mandatory in cluster mode)
+CreamServiceId=${COMPUTING_SERVICE_ID}
+
+
+
+
+
+###################################################################################################
+#
+# Calculate shares
+# One share is a VOView
+# For further details see:
+# EGI profile for GLUE2
+# https://documents.egi.eu/document/1324
+#
+###################################################################################################
+
+cat << EOF > ${GLITE_CLUSTER_SHARE_CONF}
+# Information about shares
+# For each one define the queue name, the ACBRs, the owners, the connected endpoints
+# and execution environments
+
+EOF
+
+Subcluster_list=""
+SubclusterId_list=""
+share_list=""
+
+for CLUSTER_RAW in ${CLUSTERS}; do
+    CLUSTER=`echo ${CLUSTER_RAW} | sed -e 's/-/_/g' -e 's/\./_/g' | tr '[:lower:]' '[:upper:]'`
+    
+    EE_LIST=""
+    for SUBCLUSTER_RAW in `eval echo "\\$CLUSTER_${CLUSTER}_SUBCLUSTERS"`; do
+        SUBCLUSTER=`echo ${SUBCLUSTER_RAW} | sed -e 's/-/_/g' -e 's/\./_/g' | tr '[:lower:]' '[:upper:]'`
+        Subcluster_list="${Subcluster_list} ${SUBCLUSTER}"
+        
+        requires $1 SUBCLUSTER_${SUBCLUSTER}_SUBCLUSTER_UniqueID
+        SubClusterUniqueID=`eval echo "\\$SUBCLUSTER_${SUBCLUSTER}_SUBCLUSTER_UniqueID" | tr '[:upper:]' '[:lower:]'`
+        EE_LIST="${EE_LIST} ${SubClusterUniqueID}"
+        SubclusterId_list="${SubclusterId_list} ${SubClusterUniqueID}"
+        
+    done
+    
+
+    SHARE_LIST=""
+
+    for CE in `eval echo "\\$CLUSTER_${CLUSTER}_CE_HOSTS"`; do
+        CE_name=`echo $CE | sed -e 's/-/_/g' -e 's/\./_/g' | tr '[:upper:]' '[:lower:]'`
+        
+        
+        requires $1 CE_HOST_${CE_name}_CE_InfoJobManager
+        BATCH_SYS=`eval echo "\\$CE_HOST_${CE_name}_CE_InfoJobManager" | tr '[:upper:]' '[:lower:]'`
+        if [ "x${BATCH_SYS}" == "xtorque" ] ; then
+            BATCH_SYS="pbs"
+        fi
+
+
+        
+        for QUEUE in `eval echo "\\$CE_HOST_${CE_name}_QUEUES"`; do
+            QUEUE_name=`echo ${QUEUE} | sed -e 's/[\.-]/_/g' |  tr '[:lower:]' '[:upper:]'`
+            
+            requires $1 CE_HOST_${CE_name}_QUEUE_${QUEUE_name}_CE_AccessControlBaseRule
+            qenablevar=CE_HOST_${CE_name}_QUEUE_${QUEUE_name}_CE_AccessControlBaseRule
+            if [ -z "${!qenablevar}" ] ; then continue; fi
+
+            for vomsgroup in ${!qenablevar}; do
+    
+                convert_fqan "${vomsgroup}"
+                if [ "x${FQANVOVIEWS}" = "xyes" ] ; then
+                    curr_vogrp=${newfqan}
+                else
+                    curr_vogrp=${newfqanvo}
+                fi
+                isa_fqan=`echo ${newfqan} | grep "/"`
+                
+                share=`echo ${QUEUE}_${curr_vogrp} | sed -e 's/[\/\.=-]/_/g'`
+                if [ ! "`echo ${SHARE_LIST} | grep -w ${share}`" ] ; then
+                    SHARE_LIST="$SHARE_LIST $share"
+        
+                    eval SHARE_${share}_QUEUENAME=\${QUEUE}
+                    eval SHARE_${share}_OWNER=\${curr_vogrp}
+                    eval SHARE_${share}_ENDPOINTS=\"\$SHARE_${share}_ENDPOINTS \${CE}_org.glite.ce.CREAM\"
+                    eval SHARE_${share}_CEIDS=\"\$SHARE_${share}_CEIDS \${CE}:8443/cream-${BATCH_SYS}-${QUEUE}\"
+                    eval SHARE_${share}_EXECUTIONENVIRONMENTS=\"\${EE_LIST}\"
+                    
+                fi
+
+                if [ ! "${isa_fqan}" ] ; then
+                    eval SHARE_${share}_ACBRS=\"\$SHARE_${share}_ACBRS VO:${newfqan}\"
+                else
+                    eval SHARE_${share}_ACBRS=\"\$SHARE_${share}_ACBRS VOMS:${newfqan}\"
+                fi
+                
+            done
+        
+        done
+
+    done
+
+    for share in $SHARE_LIST; do
+
+        TMP_QN=`eval echo "\\$SHARE_${share}_QUEUENAME"`
+        TMP_OWN=`eval echo "\\$SHARE_${share}_OWNER"`
+    
+        convert_list `eval echo "\\$SHARE_${share}_ENDPOINTS"`
+        TMP_EPS="${RETVAL}"
+    
+        convert_list `eval echo "\\$SHARE_${share}_CEIDS"`
+        TMP_CES="${RETVAL}"
+    
+        convert_list `eval echo "\\$SHARE_${share}_ACBRS"`
+        TMP_ACBR="${RETVAL}"
+    
+        convert_list `eval echo "\\$SHARE_${share}_EXECUTIONENVIRONMENTS"`
+        TMP_EE="${RETVAL}"
+
+        cat << EOF >> ${GLITE_CLUSTER_SHARE_CONF}
+SHARE_${share}_QUEUENAME=${TMP_QN} 
+SHARE_${share}_OWNER=${TMP_OWN}
+SHARE_${share}_ENDPOINTS=${TMP_EPS}
+SHARE_${share}_EXECUTIONENVIRONMENTS=${TMP_EE}
+SHARE_${share}_ACBRS=${TMP_ACBR}
+SHARE_${share}_CEIDS=${TMP_CES}
+
+EOF
+
+        eval unset SHARE_${share}_QUEUENAME
+        eval unset SHARE_${share}_OWNER
+        eval unset SHARE_${share}_ENDPOINTS
+        eval unset SHARE_${share}_EXECUTIONENVIRONMENTS
+        eval unset SHARE_${share}_ACBRS
+        eval unset SHARE_${share}_CEIDS
+
+    done
+    
+    share_list="${share_list} ${SHARE_LIST}"
+
+done
+
+
+convert_list ${share_list}
+share_list="${RETVAL}"
+
+convert_list ${SubclusterId_list}
+ExecutionEnvironmentList="${RETVAL}"
+
+
+
+# Calculate number of endpointtype: 3 is cemon is deployed, 2 otherwise
+if [ ${USE_CEMON} = true ]; then
+  NrEndPointType=3
+else
+  NrEndPointType=2
+fi
+
+# Back-up and create configuration file
+backup_cluster_file ${GLITE_CLUSTER_GLUE2_CONF}
+
+
+
+yaimlog DEBUG "Creating glue2 configuration file ..."
+
+cat << EOF > ${GLITE_CLUSTER_GLUE2_CONF}
+# Site Id
+SiteId = ${SITE_NAME}
+
+# Computing Service Id
+# Provided by yaim variable COMPUTING_SERVICE_ID (required in cluster mode)
+ComputingServiceId = ${CreamServiceId}
+#
+#
+# EMIES is yes if the CREAM CE provides the ES interface
+EMIES = ${UseEMIES}
+#
+#
+# NumberOfEndPointType
+# 2 (CREAM-CE + RTEpublisher) if CEMon is deployed
+# 3 otherwise
+NumberOfEndPointType = ${NrEndPointType}
+#
+#
+# Shares. The list of shares.
+# Format: Shares = (share1, share2, ..., sharen)
+Shares = ${share_list} 
+#
+# ExecutionEnvironments
+# The list of the ids of the Execution Environments
+# Format: ExecutionEnvironments = (EE1, EE2, ..., EEn)
+ExecutionEnvironments = ${ExecutionEnvironmentList}
+#
+# CE_BATH_SYS is the batch system used by the CE. E.g. torque, lsf, etc
+# It should be filled with the content of yaim variable CE_BATCH_SYS
+CE_BATCH_SYS = ${CE_BATCH_SYS}
+#
+#
+# BATCH_VERSION is the Version of the batch system
+# It should be filled with the content of yaim variable BATCH_VERSION
+BATCH_VERSION = ${BATCH_VERSION}
+#
+#
+# ArchitecturePlatformType is the Platform Type of the WNs of the
+# specified EE
+# It should be filled with the content of yaim variable SUBCLUSTER_xxx_HOST_ArchitecturePlatformType
+#
+# PhysicalCPUs is the total number of real CPUs/physical chips, including
+# the nodes that are temporary down or offline
+# It should be filled with the content of yaim variable SUBCLUSTER_xxx_SUBCLUSTER_PhysicalCPUs
+#
+# LogicalCPUs is the total number of cores/hyperthreaded CPUs, including the
+# nodes that are temporary down or offline
+# It should be filled with the content of yaim variable SUBCLUSTER_xxx_SUBCLUSTER_LogicalCPUs
+#
+# SmpSize is the number of Logical CPUs (cores) of the WN
+# It should be filled with the content of yaim variable SUBCLUSTER_xxx_HOST_ArchitectureSMPSize
+#
+# ProcessorVendor is the name of the processor vendor for the Worker Nodes
+# It should be filled with the content of yaim variable SUBCLUSTER_xxx_HOST_ProcessorVendor
+#
+# ProcessorModel is the name of the processor model as defined by the vendor
+# for the Worker Nodes
+# It should be filled with the content of yaim variable SUBCLUSTER_xxx_HOST_ProcessorModel
+#
+# ProcessorClockSpeed is the processor clock speed expressed in MHz for the
+# Worker Nodes
+# It should be filled with the content of yaim variable SUBCLUSTER_xxx_HOST_ProcessorClockSpeed
+#
+# MainMemoryRAMSize is the total physical memory of a WN expressed in MegaBytes
+# It should be filled with the content of yaim variable SUBCLUSTER_xxx_HOST_MainMemoryRAMSize
+#
+# MainMemoryVirtualSize is the total virtual memory of a WN expressed in
+# MegaBytes.
+# It should be filled with the content of yaim variable SUBCLUSTER_xxx_HOST_MainMemoryVirtualSize
+#
+# OperatingSystemFamily should be filled with the OS family (e.g. linux)
+#
+# OperatingSystemName is the name of the operating system used on the Worker
+# Nodes
+# It should be filled with the content of yaim variable SUBCLUSTER_xxx_HOST_OperatingSystemName
+#
+# OperatingSystemRelease is the release of the operating system used on the
+# Worker Nodes
+# It should be filled with the content of yaim variable SUBCLUSTER_xxx_HOST_OperatingSystemRelease
+#
+# NetworkAdapterInboundIP must be set to either FALSE or TRUE to express the
+# permission for inbound connectivity for the WNs
+# It should be filled with the content of yaim variable SUBCLUSTER_xxx_HOST_NetworkAdapterInboundIP
+#
+# NetworkAdapterOutboundIP must be set to either FALSE or TRUE to express
+# the permission for outbound connectivity for the WNs
+# It should be filled with the content of yaim variable SUBCLUSTER_xxx_HOST_NetworkAdapterOutboundIP
+#
+#
+# Benchmarks is the list of benchmarks
+# Format: Benchmarks = (Benchmark1, Benchmark2, .., Benchmarkn)
+# Format of Benchmarki: (Type Value)
+#
+#
+# Cores is the number of cores per CPU of the Worker Nodes
+#
+EOF
+
+for EE in ${Subcluster_list}; do
+      SubClusterUniqueID=`eval echo "\\$SUBCLUSTER_${EE}_SUBCLUSTER_UniqueID" | tr '[:upper:]' '[:lower:]'`
+
+     yaimlog DEBUG "Filling conf file with attributes for Subcluster ${SubClusterUniqueID} ..." 
+     echo "# Subcluster ${SubClusterUniqueID=}" >> ${GLITE_CLUSTER_GLUE2_CONF}
+     echo "ExecutionEnvironment_${SubClusterUniqueID}_ArchitecturePlatformType = `eval echo "\\${SUBCLUSTER_${EE}_HOST_ArchitecturePlatformType}"`" >> ${GLITE_CLUSTER_GLUE2_CONF}
+     echo "ExecutionEnvironment_${SubClusterUniqueID}_PhysicalCPUs = `eval echo "\\${SUBCLUSTER_${EE}_SUBCLUSTER_PhysicalCPUs}"`" >> ${GLITE_CLUSTER_GLUE2_CONF}
+     echo "ExecutionEnvironment_${SubClusterUniqueID}_LogicalCPUs = `eval echo "\\${SUBCLUSTER_${EE}_SUBCLUSTER_LogicalCPUs}"`" >> ${GLITE_CLUSTER_GLUE2_CONF}
+     echo "ExecutionEnvironment_${SubClusterUniqueID}_SmpSize = `eval echo "\\${SUBCLUSTER_${EE}_HOST_ArchitectureSMPSize}"`" >> ${GLITE_CLUSTER_GLUE2_CONF}
+     echo "ExecutionEnvironment_${SubClusterUniqueID}_ProcessorVendor = `eval echo "\\${SUBCLUSTER_${EE}_HOST_ProcessorVendor}"`" >> ${GLITE_CLUSTER_GLUE2_CONF}
+     echo "ExecutionEnvironment_${SubClusterUniqueID}_ProcessorModel = `eval echo "\\${SUBCLUSTER_${EE}_HOST_ProcessorModel}"`" >> ${GLITE_CLUSTER_GLUE2_CONF}
+     echo "ExecutionEnvironment_${SubClusterUniqueID}_ProcessorClockSpeed = `eval echo "\\${SUBCLUSTER_${EE}_HOST_ProcessorClockSpeed}"`" >> ${GLITE_CLUSTER_GLUE2_CONF}
+     echo "ExecutionEnvironment_${SubClusterUniqueID}_MainMemoryRAMSize = `eval echo "\\${SUBCLUSTER_${EE}_HOST_MainMemoryRAMSize}"`" >> ${GLITE_CLUSTER_GLUE2_CONF}
+     echo "ExecutionEnvironment_${SubClusterUniqueID}_MainMemoryVirtualSize = `eval echo "\\${SUBCLUSTER_${EE}_HOST_MainMemoryVirtualSize}"`" >> ${GLITE_CLUSTER_GLUE2_CONF}
+     echo "ExecutionEnvironment_${SubClusterUniqueID}_OperatingSystemFamily = ${CE_OS_FAMILY}" >> ${GLITE_CLUSTER_GLUE2_CONF}
+     echo "ExecutionEnvironment_${SubClusterUniqueID}_OperatingSystemName = `eval echo "\\${SUBCLUSTER_${EE}_HOST_OperatingSystemName}"`" >> ${GLITE_CLUSTER_GLUE2_CONF}
+     echo "ExecutionEnvironment_${SubClusterUniqueID}_OperatingSystemRelease = `eval echo "\\${SUBCLUSTER_${EE}_HOST_OperatingSystemRelease}"`" >> ${GLITE_CLUSTER_GLUE2_CONF}
+     echo "ExecutionEnvironment_${SubClusterUniqueID}_NetworkAdapterInboundIP = `eval echo "\\${SUBCLUSTER_${EE}_HOST_NetworkAdapterInboundIP}"`" >> ${GLITE_CLUSTER_GLUE2_CONF}
+     echo "ExecutionEnvironment_${SubClusterUniqueID}_NetworkAdapterOutboundIP = `eval echo "\\${SUBCLUSTER_${EE}_HOST_NetworkAdapterOutboundIP}"`" >> ${GLITE_CLUSTER_GLUE2_CONF}
+
+     # Calculate Benchmark
+     benchmark_info=""
+     sf00=`eval echo "\\$SUBCLUSTER_${EE}_HOST_BenchmarkSF00"`
+     if [ x = x${sf00} ]; then
+       spec_fp=""
+     else
+       spec_fp="(specfp2000 ${sf00})"
+       benchmark_info="${spec_fp},"
+     fi
+     si00=`eval echo "\\$SUBCLUSTER_${EE}_HOST_BenchmarkSI00"`
+     if [ x = x${si00} ]; then
+       spec_int=""
+     else
+       spec_int="(specint2000 ${si00})"
+       benchmark_info="${benchmark_info} ${spec_int},"
+     fi
+
+     otherdesc=`eval echo "\\$SUBCLUSTER_${EE}_HOST_ProcessorOtherDescription"`
+     if [ "`echo $otherdesc | grep Benchmark`" > /dev/null ]; then
+       benchmark=`echo $otherdesc | sed -e 's/.*Benchmark=//' | sed -e 's/-.*//'`
+       hep_spec="(hep-spec06 $benchmark)"
+       benchmark_info="${benchmark_info} ${hep_spec}"
+     else
+       hep_spec=""
+     fi
+
+     if [ ! "X" = "X${benchmark_info}" ]; then
+         benchmark_info=`echo ${benchmark_info} | sed -e 's/,$//g'`
+         benchmark_info="(${benchmark_info})"
+     fi
+     echo "ExecutionEnvironment_${SubClusterUniqueID}_Benchmarks = ${benchmark_info}" >> ${GLITE_CLUSTER_GLUE2_CONF}
+
+     # Evaluate Cores number
+     if [ "`echo $otherdesc | grep Cores`" > /dev/null ]; then
+        cores=`echo $otherdesc | sed -e 's/.*Cores=//g' | sed 's/,.*//g'`
+        echo "ExecutionEnvironment_${SubClusterUniqueID}_Cores = ${cores}" >> ${GLITE_CLUSTER_GLUE2_CONF}
+     else
+       yaimlog ERROR "$SUBCLUSTER_${SubClusterUniqueID}_HOST_ProcessorOtherDescription not properly set"
+       exit ${YEX_CONFIG}
+     fi
+     
+done
+
+# Evaluate closeSE info
+yaimlog DEBUG "SE_LIST=${SE_LIST}"
+close_se_list=""
+if [ ! "X" == "X${SE_LIST}" ]; then
+
+    if [ $SE_MOUNT_INFO_LIST = "none" ]; then
+
+        for se in ${SE_LIST}; do
+            close_se_list="${close_se_list} (${se} none none),"
+        done
+
+    else if [ ! "x" = "x${SE_MOUNT_INFO_LIST}" ]; then
+
+        for se_info in ${SE_MOUNT_INFO_LIST}; do
+            se_i=`echo ${se_info} | sed -e 's/:.*//g'`
+            export_dir_i=`echo ${se_info} | sed -e 's/.*://g' | sed -e 's/,.*//g'`
+            mount_dir_i=`echo ${se_info} | sed -e 's/.*,//g'`
+            close_se_list="${close_se_list} (${se_i} ${export_dir_i} ${mount_dir_i}),"
+        done
+    fi
+    fi
+
+    close_se_list=`echo $close_se_list | sed -e "s/,$//g"`
+    close_se_list="(${close_se_list})"
+
+fi
+
+cat << EOF >> ${GLITE_CLUSTER_GLUE2_CONF}
+#
+#
+# CloseSEs is the list of the storage services close to this cluster
+# Format: CloseSEs = (closeSE1, closeSE2, ..., closeSEn)
+# Format of closeSEi: (StorageServiceid LocalPath RemotePath)
+CloseSEs = ${close_se_list}
+
+EOF
+
+if [ "x${ES_COMPUTING_SERVICE_ID}" != "x" ]; then
+  cat << EOF >> ${GLITE_CLUSTER_GLUE2_CONF}
+#
+#
+# Computing service ID for Execution Service
+ESComputingServiceId = ${ES_COMPUTING_SERVICE_ID}
+
+EOF
+fi
+
+
+# Evaluate CE_CAPABILITY info
+convert_list "${CE_CAPABILITY}"
+capa_list=${RETVAL}
+cat << EOF >> ${GLITE_CLUSTER_GLUE2_CONF}
+#
+#
+# CE_CAPABILITY is the list of CE capabilities
+# Format: CECapabilities = (capa1, capa2, ..., capaN)
+CECapabilities = ${capa_list}
+
+EOF
+
+# Working area attributes (which are optional)
+
+if [ "x${WORKING_AREA_SHARED}" != "x" ]; then
+echo "WorkingAreaShared = ${WORKING_AREA_SHARED}" >> ${GLITE_CLUSTER_GLUE2_CONF}
+fi
+
+
+if [ "x${WORKING_AREA_GUARANTEED}" != "x" ]; then
+echo "WorkingAreaGuaranteed = ${WORKING_AREA_GUARANTEED}" >> ${GLITE_CLUSTER_GLUE2_CONF}
+fi
+
+if [ "x${WORKING_AREA_TOTAL}" != "x" ]; then
+echo "WorkingAreaTotal = ${WORKING_AREA_TOTAL}" >> ${GLITE_CLUSTER_GLUE2_CONF}
+fi
+
+if [ "x${WORKING_AREA_FREE}" != "x" ]; then
+echo "WorkingAreaFree = ${WORKING_AREA_FREE}" >> ${GLITE_CLUSTER_GLUE2_CONF}
+fi
+
+if [ "x${WORKING_AREA_LIFETIME}" != "x" ]; then
+echo "WorkingAreaLifeTime = ${WORKING_AREA_LIFETIME}" >> ${GLITE_CLUSTER_GLUE2_CONF}
+fi
+
+if [ "x${WORKING_AREA_MULTISLOT_TOTAL}" != "x" ]; then
+echo "WorkingAreaMultiSlotTotal = ${WORKING_AREA_MULTISLOT_TOTAL}" >> ${GLITE_CLUSTER_GLUE2_CONF}
+fi
+
+if [ "x${WORKING_AREA_MULTISLOT_FREE}" != "x" ]; then
+echo "WorkingAreaMultiSlotFree = ${WORKING_AREA_MULTISLOT_FREE}" >> ${GLITE_CLUSTER_GLUE2_CONF}
+fi
+
+if [ "x${WORKING_AREA_MULTISLOT_LIFETIME}" != "x" ]; then
+echo "WorkingAreaMultiSlotLifeTime = ${WORKING_AREA_MULTISLOT_LIFETIME}" >> ${GLITE_CLUSTER_GLUE2_CONF}
+fi
+
+
+# Merge share conf file with the generic glue2 one
+cat ${GLITE_CLUSTER_SHARE_CONF} >> ${GLITE_CLUSTER_GLUE2_CONF}
+rm ${GLITE_CLUSTER_SHARE_CONF}
+
+
+yaimlog DEBUG "Enable publication of ComputingService"
+${GLITE_CLUSTER_LOCATION_LIBEXEC}/glite-ce-glue2-computingservice-static \
+ ${GLITE_CLUSTER_GLUE2_CONF} > ${GLITE_CLUSTER_LOCATION_GIP}/ldif/ComputingService.ldif
+
+yaimlog DEBUG "Enable publication of ComputingManager"
+${GLITE_CLUSTER_LOCATION_LIBEXEC}/glite-ce-glue2-manager-static \
+ ${GLITE_CLUSTER_GLUE2_CONF} > ${GLITE_CLUSTER_LOCATION_GIP}/ldif/ComputingManager.ldif
+
+yaimlog DEBUG "Enable publication of ComputingShare"
+${GLITE_CLUSTER_LOCATION_LIBEXEC}/glite-ce-glue2-share-static \
+${GLITE_CLUSTER_GLUE2_CONF} > ${GLITE_CLUSTER_LOCATION_GIP}/ldif/ComputingShare.ldif
+
+yaimlog DEBUG "Enable publication of ExecutionEnvironment"
+${GLITE_CLUSTER_LOCATION_LIBEXEC}/glite-ce-glue2-executionenvironment-static \
+ ${GLITE_CLUSTER_GLUE2_CONF} > ${GLITE_CLUSTER_LOCATION_GIP}/ldif/ExecutionEnvironment.ldif
+
+yaimlog DEBUG "Enable publication of Benchmark"
+${GLITE_CLUSTER_LOCATION_LIBEXEC}/glite-ce-glue2-benchmark-static \
+ ${GLITE_CLUSTER_GLUE2_CONF} > ${GLITE_CLUSTER_LOCATION_GIP}/ldif/Benchmark.ldif
+
+yaimlog DEBUG "Enable publication of ToStorageService"
+${GLITE_CLUSTER_LOCATION_LIBEXEC}/glite-ce-glue2-tostorageservice-static \
+ ${GLITE_CLUSTER_GLUE2_CONF} > ${GLITE_CLUSTER_LOCATION_GIP}/ldif/ToStorageService.ldif
+
+
+# Exit with success
+return 0
+
+}

@@ -1,0 +1,78 @@
+#!/bin/bash
+##############################################################################
+# Copyright (c) Members of the EGEE Collaboration. 2004. 
+# See http://www.eu-egee.org/partners/ for details on the copyright 
+# holders.  
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); 
+# you may not use this file except in compliance with the License. 
+# You may obtain a copy of the License at 
+#
+#    http://www.apache.org/licenses/LICENSE-2.0 
+#
+# Unless required by applicable law or agreed to in writing, software 
+# distributed under the License is distributed on an "AS IS" BASIS, 
+# WITHOUT WARRANTIES OR CONDITIONS 
+# OF ANY KIND, either express or implied. 
+# See the License for the specific language governing permissions and 
+# limitations under the License.
+##############################################################################
+#
+# NAME :        config_gip_software_plugin
+#
+# DESCRIPTION : This function configures the software info provider.
+#
+# AUTHORS :     yaim-contact@cern.ch massimo.sgaravatto@pd.infn.it
+#
+# NOTES : 
+#
+# YAIM MODULE:  glite-yaim-cluster
+#                 
+##############################################################################
+
+function config_cluster_gip_software_plugin_check(){
+
+  requires $1 
+  return $?
+
+}
+
+function config_cluster_gip_software_plugin(){
+	
+  GLITE_CLUSTER_LOCATION_LIBEXEC=/usr/libexec
+  GLITE_CLUSTER_LOCATION_GIP=/var/lib/bdii/gip
+
+  LDIF_FILE=static-file-Cluster.ldif
+	
+  # Publish as GlueHostApplicationSoftwareRunTimeEnvironment tags
+    yaimlog DEBUG "Install glue1 plugin for GlueHostApplicationSoftwareRunTimeEnvironment"
+    s=${GLITE_CLUSTER_LOCATION_LIBEXEC}/lcg-info-dynamic-software
+    w=${GLITE_CLUSTER_LOCATION_GIP}/plugin/glite-info-dynamic-software-wrapper
+
+    if [ -f $s ]; then
+	cat <<EOF > $w
+#!/bin/sh
+$s ${GLITE_CLUSTER_LOCATION_GIP}/ldif/$LDIF_FILE
+EOF
+   	chmod +x $w
+    fi
+
+    yaimlog DEBUG "Install glue2 provider for ApplicationEnvironments"
+    ae_script=${GLITE_CLUSTER_LOCATION_LIBEXEC}/glite-ce-glue2-applicationenvironment-dynamic
+    ae_wrapper=${GLITE_CLUSTER_LOCATION_GIP}/provider/glite-info-glue2-applicationenvironment-wrapper
+    glue2_conf_file=${GLITE_CLUSTER_LOCATION_ETC}/glite-ce-glue2/glite-cluster-glue2.conf
+if [ -f $ae_script ]; then
+	cat <<EOF > $ae_wrapper
+#!/bin/sh
+$ae_script $glue2_conf_file ${GLITE_CLUSTER_LOCATION_GIP}/ldif/$LDIF_FILE
+EOF
+
+    chmod +x $ae_wrapper
+   fi
+ 
+
+    
+
+return 0
+
+}

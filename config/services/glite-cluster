@@ -1,0 +1,120 @@
+##############################################################################
+# Copyright (c) Members of the EGEE Collaboration. 2004.
+# See http://www.eu-egee.org/partners/ for details on the copyright
+# holders.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS
+# OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+##############################################################################
+#
+# NAME :        glite_cluster
+#
+# DESCRIPTION : This file contains the variables needed to configure a cluster.
+#
+# MAINTAINER :     yaim-contact@cern.ch
+#
+# NOTES :
+#
+# YAIM MODULE:  glite-yaim-cluster
+#
+##############################################################################
+
+# Important note on variable names syntax:
+#
+# - In general, variables based on hostnames, queues or VOViews containing '.' and '-'
+#   should be transformed into '_'
+#
+# - <hostname>: identifier that corresponds to the CE hostname in lower case 
+#   Example: ctb-generic-1.cern.ch -> ctb_generic_1_cern_ch
+#
+# - <cluster>: identifier that corresponds to the cluster name in upper case
+#   Example: my_cluster -> MY_CLUSTER 
+#
+# - <subcluster>: identifier that corresponds to the subcluster name in upper case
+#   Example: my_subcluster -> MY_SUBCLUSTER 
+
+###########
+# CLUSTER #
+###########
+
+# Hostname where the cluster is configured
+CLUSTER_HOST="ctb-generic-2.cern.ch"
+
+# Space separated list of your cluster names
+CLUSTERS="cluster1 [cluster2 [...]]"
+
+# Cluster UniqueID
+CLUSTER_<cluster>_CLUSTER_UniqueID=my-cluster
+
+# Cluster human readable name
+CLUSTER_<cluster>_CLUSTER_Name="cluster human readable name"
+
+# Site name where the cluster belongs to
+# It should be consistent with your variable SITE_NAME
+# NOTE: This may be changed to SITE_UniqueID when the GlueSite
+# is configured with the new infosys variables
+CLUSTER_<cluster>_SITE_UniqueID=my-site
+
+# space separated list of CE hostnames configured in the cluster
+CLUSTER_<cluster>_CE_HOSTS="ctb-generic-1.cern.ch"
+
+# Space separated list of your subcluster names
+CLUSTER_<cluster>_SUBCLUSTERS="subcluster1 [subcluster2 [...]]"
+
+# Define the following variables for the CEs configured in your cluster
+# NOTE: you don't need to uncomment these variables if you are configuring
+# only one CE in the same host as your cluster. 
+# You can use the variables defined in services/lcg-ce instead
+#
+# CE type: 'jobmanager' for lcg CE and 'cream' for cream CE
+#CE_HOST_<hostname>_CE_TYPE=ce_type
+#
+# Space separated list of the queue names configured in the CE
+# This variable has been renamed in the new infosys configuration.
+# The old variable name was: QUEUES
+#CE_HOST_<hostname>_QUEUES="queue1 [queue2 [...]]"
+#
+# The name of the job manager used by the gatekeeper
+# This variable has been renamed in the new infosys configuration.
+# The old variable name was: JOB_MANAGER
+# Please, define: pbs, lfs, sge or condor 
+#CE_HOST_<hostname>_CE_InfoJobManager=my_job_manager
+
+
+##############
+# SUBCLUSTER #
+##############
+
+# Define the following variables with sesitive values for your subcluster
+SUBCLUSTER_<subcluster>_SUBCLUSTER_UniqueID=my-subcluster
+SUBCLUSTER_<subcluster>_HOST_ApplicationSoftwareRunTimeEnvironment="sw1[|sw2[|...]"                              # CE_RUNTIMEENV
+SUBCLUSTER_<subcluster>_HOST_ArchitectureSMPSize=smpsize                                                         # CE_SMPSIZE
+SUBCLUSTER_<subcluster>_HOST_ArchitecturePlatformType=platform                                                   # CE_OS_ARCH 
+SUBCLUSTER_<subcluster>_HOST_BenchmarkSF00=ksf00                                                                 # CE_SF00
+SUBCLUSTER_<subcluster>_HOST_BenchmarkSI00=kdi00                                                                 # CE_SI00
+SUBCLUSTER_<subcluster>_HOST_MainMemoryRAMSize=ram_size                                                          # CE_MINPHYSMEM
+SUBCLUSTER_<subcluster>_HOST_MainMemoryVirtualSize=virtual_size                                                  # CE_MINVIRTMEM
+SUBCLUSTER_<subcluster>_HOST_NetworkAdapterInboundIP=true_or_false                                               # CE_INBOUNDIP 
+SUBCLUSTER_<subcluster>_HOST_NetworkAdapterOutboundIP=true_or_false                                              # CE_OUTBOUNDIP
+SUBCLUSTER_<subcluster>_HOST_OperatingSystemName="my OS"                                                         # CE_OS
+SUBCLUSTER_<subcluster>_HOST_OperatingSystemRelease=release                                                      # CE_OS_RELEASE
+SUBCLUSTER_<subcluster>_HOST_OperatingSystemVersion=version                                                      # CE_OS_VERSION
+SUBCLUSTER_<subcluster>_HOST_ProcessorClockSpeed=clock_speed                                                     # CE_CPU_SPEED
+SUBCLUSTER_<subcluster>_HOST_ProcessorModel=processor                                                            # CE_CPU_MODEL
+SUBCLUSTER_<subcluster>_HOST_ProcessorOtherDescription="Cores=value[,Benchmark=value-HEP-SPEC06]"                # CE_OTHERDESCR  
+SUBCLUSTER_<subcluster>_HOST_ProcessorVendor=intel                                                               # CE_CPU_VENDOR
+SUBCLUSTER_<subcluster>_SUBCLUSTER_Name="subcluster human reaable name"
+SUBCLUSTER_<subcluster>_SUBCLUSTER_PhysicalCPUs=phys_cpus                                                        # CE_PHYSCPU
+SUBCLUSTER_<subcluster>_SUBCLUSTER_LogicalCPUs=log_cpus                                                          # CE_LOGCPU
+SUBCLUSTER_<subcluster>_SUBCLUSTER_TmpDir=tmp_dir
+SUBCLUSTER_<subcluster>_SUBCLUSTER_WNTmpDir=wn_tmp_dir

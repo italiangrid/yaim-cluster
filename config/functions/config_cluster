@@ -1,0 +1,123 @@
+#!/bin/bash
+##############################################################################
+# Copyright (c) Members of the EGEE Collaboration. 2004. 
+# See http://www.eu-egee.org/partners/ for details on the copyright 
+# holders.  
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); 
+# you may not use this file except in compliance with the License. 
+# You may obtain a copy of the License at 
+#
+#    http://www.apache.org/licenses/LICENSE-2.0 
+#
+# Unless required by applicable law or agreed to in writing, software 
+# distributed under the License is distributed on an "AS IS" BASIS, 
+# WITHOUT WARRANTIES OR CONDITIONS 
+# OF ANY KIND, either express or implied. 
+# See the License for the specific language governing permissions and 
+# limitations under the License.
+##############################################################################
+#
+# NAME :        config_cluster
+#
+# DESCRIPTION : This function configures the cluster.
+#
+# MAINTAINER :     yaim-contact@cern.ch massimo.sgaravatto@pd.infn.it
+#
+# NOTES : 
+#
+# YAIM MODULE:  glite-yaim-cluster
+#                 
+##############################################################################
+
+config_cluster_check () {
+
+  ret=0
+
+  newCLUSTERS=""
+  for CLUSTER in ${CLUSTERS}; do
+    CLUSTER=`echo ${CLUSTER} | sed -e 's/-/_/g' -e 's/\./_/g' | tr '[:lower:]' '[:upper:]'`
+    newCLUSTERS="${newCLUSTERS} $CLUSTER"
+    UniqueID=`eval echo "\\$CLUSTER_${CLUSTER}_CLUSTER_UniqueID" | tr '[:upper:]' '[:lower:]'`
+    if [ "x`echo ${UniqueID} | sed -e 's/[a-z0-9._-]//g'`" != "x" ]; then
+      yaimlog ERROR "The UniqueID provided for cluster $CLUSTER contains invalid character(s)"
+      let "ret |= 1"
+    fi
+    eval "CLUSTER_${CLUSTER}_CLUSTER_UniqueID=\"${UniqueID}\""
+  done
+  CLUSTERS="${newCLUSTERS}"
+
+
+  requires $1 CLUSTERS CLUSTER__CLUSTER_UniqueID CLUSTER__CLUSTER_Name CLUSTER__SITE_UniqueID CLUSTER__CE_HOSTS CE_HOST__CE_TYPE CE_HOST__QUEUES \
+            GlueCluster_ldif CE_HOST__CE_InfoJobManager 
+
+  let "ret |= $?"
+
+
+  return $ret
+}
+
+config_cluster_setenv () {
+
+  yaimlog DEBUG "This function currently doesn't set any environment variables"
+
+}
+
+config_cluster () {
+
+OUTFILE=${GlueCluster_ldif} 
+
+if [ -f ${OUTFILE} ]; then
+  rm -rf ${OUTFILE}
+fi
+
+yaimlog DEBUG "Cluster ldif file in ${OUTFILE}"
+
+for CLUSTER in ${CLUSTERS}; do
+
+yaimlog DEBUG "Configuring cluster ${CLUSTER}"
+
+    cat <<EOF >> ${OUTFILE}
+
+dn: GlueClusterUniqueID=`eval echo "\\$CLUSTER_${CLUSTER}_CLUSTER_UniqueID,mds-vo-name=resource,o=grid"`
+objectClass: GlueClusterTop
+objectClass: GlueCluster
+objectClass: GlueInformationService
+objectClass: GlueKey
+objectClass: GlueSchemaVersion
+GlueClusterName: `eval echo "\\$CLUSTER_${CLUSTER}_CLUSTER_Name"`
+GlueClusterUniqueID: `eval echo "\\$CLUSTER_${CLUSTER}_CLUSTER_UniqueID"`
+GlueForeignKey: GlueSiteUniqueID=`eval echo "\\$CLUSTER_${CLUSTER}_SITE_UniqueID"`
+GlueInformationServiceURL: ldap://`hostname -f`:${info_port}/mds-vo-name=${info_type},o=grid
+GlueSchemaVersionMajor: 1
+GlueSchemaVersionMinor: 3
+EOF
+
+
+  for CE in `eval echo "\\$CLUSTER_${CLUSTER}_CE_HOSTS"`; do
+  yaimlog DEBUG "Configuring CE information for CE ${CE}"
+
+    CE_name=`echo $CE | sed -e 's/-/_/g' -e 's/\./_/g' | tr '[:upper:]' '[:lower:]'`                # Transform . and - into _ for the variable name.
+
+    if [ `eval echo "\\$CE_HOST_${CE_name}_CE_TYPE"` = "jobmanager" ];then
+        CE_port=2119
+    elif [ `eval echo "\\$CE_HOST_${CE_name}_CE_TYPE"` = "cream" ];then
+        CE_port=8443
+    fi
+
+    # We assume that all the queues defined for a CE_HOST belong to the same cluster (LRMS)
+    # CREAM is not able to manage multiple LRMS installation
+    for QUEUE in `eval echo "\\$CE_HOST_${CE_name}_QUEUES"`; do
+         QUEUE_name=`echo ${QUEUE} | sed -e 's/[\.-]/_/g' |  tr '[:lower:]' '[:upper:]'`
+         echo "GlueClusterService: ${CE}:${CE_port}/`eval echo "\\$CE_HOST_${CE_name}_CE_TYPE"`-`eval echo "\\$CE_HOST_${CE_name}_CE_InfoJobManager"`-${QUEUE}" >> ${OUTFILE}
+         echo "GlueForeignKey: GlueCEUniqueID=${CE}:${CE_port}/`eval echo "\\$CE_HOST_${CE_name}_CE_TYPE"`-`eval echo "\\$CE_HOST_${CE_name}_CE_InfoJobManager"`-${QUEUE}" >> ${OUTFILE}
+    done
+
+
+  done
+
+done #cluster
+
+return 0
+
+}
