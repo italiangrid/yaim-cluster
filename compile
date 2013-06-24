@@ -2,7 +2,7 @@
 
 PKGNAME=glite-yaim-cluster
 PKGVER=2.1.1
-PKGREL=2
+PKGREL=3
 
 ITEMS_FOR_SOURCE="config"
 
